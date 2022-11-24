@@ -5,9 +5,8 @@
 #' 
 #' 4) Error handling of the metadata retrieving function
 #' 
-#' 5) Papers of interest must have 16S or WGS in their methods or results. Filter those that don't
 #' 
-#' 6) Interesting things the see:
+#' 6) Interesting things to see:
 #' 
 #' 6.1 From the total of papers, how many use the different distance matrices (there are some euclidean without clr)
 #' 
@@ -27,6 +26,8 @@
 
 
 # Setting everything for the project --------------------------------------
+
+options(encoding="utf-8")
 
 library(tidypmc)
 library(tidyverse)
@@ -179,7 +180,7 @@ formatted_papers_dataset <- microbiome_papers_text_and_metadata %>%
   ungroup() %>% 
   
   # Here I'm removing the paragraph and sentence columns and relocating the other columns
-  select(major_section, full_text, PMCID:Publisher) %>% 
+  select(major_section, full_text, PMCID:Date.received) %>% 
   
   unique() %>% 
   
@@ -243,7 +244,7 @@ formatted_papers_dataset <- microbiome_papers_text_and_metadata %>%
   
   
 #write_csv(x = formatted_papers_dataset, file = "data/formatted_papers_dataset.csv")
-
+write_csv(x = formatted_papers_dataset, file = "microbiome_literature_mining/data/formatted_papers_dataset.csv")
 
 
 
@@ -256,15 +257,21 @@ formatted_papers_dataset %>%
 
 
 # How many papers per year of each type are we dealing with
-n_of_papers_through_years_data <- formatted_papers_dataset_with_reviews %>% 
+
+# DATA
+n_of_papers_through_years_data <- formatted_papers_dataset %>% 
   as_tibble() %>% 
-  pivot_longer(cols = c(review, metaanalysis_abstract, original_article),
+  pivot_longer(cols = c(review, metaanalysis, original_article),
                values_to = "value",
                names_to = "type_of_publication") %>% 
+  drop_na() %>% 
   group_by(Year, type_of_publication) %>% 
   summarize(n_of_articles = sum(value), .groups = "drop")
-  
-  
+
+#write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/n_of_papers_through_years_data.csv") 
+
+
+# PLOT
 n_of_papers_through_years_data %>% 
   
   ggplot(aes(x = Year, y = n_of_articles, color = type_of_publication)) + 
@@ -278,7 +285,7 @@ n_of_papers_through_years_data %>%
   scale_y_continuous(breaks = seq(0,600, by = 100)) +
   
   guides(color = guide_legend("Type of publication")) +
-  scale_color_discrete(breaks = c("original_article","review", "metaanalysis_abstract"),
+  scale_color_discrete(breaks = c("original_article","review", "metaanalysis"),
                        labels = c("Research article", "Review", "Meta analysis")) +
   
   theme_bw() +
@@ -288,15 +295,23 @@ n_of_papers_through_years_data %>%
         axis.text = element_text(size = 12),
         axis.title = element_text(size = 16))
   
+# ggsave(filename = "microbiome_literature_mining/figures/n_of_papers_through_years_data.jpg", 
+#        plot = last_plot(), 
+#        units = "in", height = 8, width = 10)
 
 
 
-formatted_papers_dataset <- read.csv("microbiome_literature_mining/data/formatted_papers_dataset.csv")
-formatted_papers_dataset_with_reviews <- read.csv("microbiome_literature_mining/data/formatted_papers_dataset_with_reviews.csv")
+
+
+
+
 
 
 # Distance matrices used
+
+# DATA
 stacked_barplot_data <- formatted_papers_dataset %>%
+  drop_na(Year, braycurtis_performed:euclidian_performed) %>% 
   group_by(Year) %>% 
   summarize(cum_bray = sum(braycurtis_performed),
             cum_jaccard = sum(jaccard_performed),
@@ -312,10 +327,11 @@ stacked_barplot_data <- formatted_papers_dataset %>%
   
   filter(num_studies > 0)
 
-#write.csv(x = stacked_barplot_data, file = "data/stacked_barplot_data.csv")
+#write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/stacked_barplot_distance_matrix_used_through_years.csv") 
 
 
-# Plot the figure
+
+# PLOT
 stacked_barplot_data %>% 
   
   ggplot(aes(x = Year, y = num_studies, fill = distance_matrix)) + 
@@ -349,26 +365,29 @@ stacked_barplot_data %>%
         axis.text = element_text(size = 14))
 
 
-ggsave(filename = "microbiome_literature_mining/figures/stacked_barplot_distance_matrix_used_through_years.jpg", 
-       plot = last_plot(), 
-       units = "in", height = 8, width = 10)
+# ggsave(filename = "microbiome_literature_mining/figures/stacked_barplot_distance_matrix_used_through_years.jpg", 
+#        plot = last_plot(), 
+#        units = "in", height = 8, width = 10)
+
+
+
 
 
 
 # CLR through the years
 
+# DATA
 clr_through_years_data <- formatted_papers_dataset %>% 
-  # Not sure about this : Maybe there is value in considering papers just with abstract and methods
-  #filter(methods_16s == 1 | methods_wgs == 1) %>% 
-  mutate(clr_performed = ifelse(methods_clr + results_clr >= 1, 1, 0)) %>% 
-  select(PMCID, Title, clr_performed, Year) %>% 
+  drop_na(Year, aitchison_performed) %>% 
+  select(PMCID, Title, aitchison_performed, Year) %>% 
   group_by(Year) %>% 
-  summarize(cum_clr_performed = sum(clr_performed), .groups = "drop")
+  summarize(cum_clr_performed = sum(aitchison_performed), .groups = "drop")
   
+#write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/aitchison_through_years_data.csv") 
 
-#write.csv(x = clr_through_years_data, file = "data/clr_through_years_data.csv")
 
 
+# PLOT
 clr_through_years_data %>% 
   ggplot(aes(x = Year, y = cum_clr_performed)) + 
   geom_line(size = 1.2) + 
@@ -387,7 +406,9 @@ clr_through_years_data %>%
   theme(panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank())
   
-
+# ggsave(filename = "microbiome_literature_mining/figures/line_plot_aitchison_through_years_data.jpg", 
+#        plot = last_plot(), 
+#        units = "in", height = 8, width = 10)
 
 
 
