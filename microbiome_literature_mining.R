@@ -1,6 +1,12 @@
 
 #' TO DO LIST:
 #' 
+#' 1) Make a table out of the count of how many papers per year are included in the analysis
+#' 
+#' 2) TO CORRECT: NOW THE PERFORMED COLUMN IS CALCULATED AS 1, IF EITHER ONE OF THE COLUMN IS 1, OR 0
+#' IF EITHER OF THEM IS 0. HOWEVER, IF ONE OF THE IS NA, REGARDLES OF THE RESULT OF THE OTHER, THE COLUMNS
+#' WITH PERFORMED WILL BE CONSIDERED AS NA, WHICH IS MESSING UP THE RESULTS.
+#' 
 #' 3) Do the inner join in another function that takes as arguments the 2 custom functions made before
 #' 
 #' 4) Error handling of the metadata retrieving function
@@ -243,17 +249,25 @@ formatted_papers_dataset <- microbiome_papers_text_and_metadata %>%
     euclidian_performed = ifelse((methods_euclidian & !(methods_aitchison | methods_clr | results_aitchison | results_clr)) | (results_euclidian & !(results_aitchison | results_clr | methods_aitchison | methods_clr)), 1, 0))
   
   
-#write_csv(x = formatted_papers_dataset, file = "data/formatted_papers_dataset.csv")
-write_csv(x = formatted_papers_dataset, file = "microbiome_literature_mining/data/formatted_papers_dataset.csv")
+# write_csv(x = formatted_papers_dataset, file = "data/formatted_papers_dataset.csv") # Server
+# write_csv(x = formatted_papers_dataset, file = "microbiome_literature_mining/data/formatted_papers_dataset.csv") # PC
 
 
 
 
 # Plots -------------------------------------------------------------------
 
+# Reading the formatted papers dataset
+# formatted_papers_dataset <- read_csv(file = "microbiome_literature_mining/data/formatted_papers_dataset.csv")
+
+
+
 # How many papers are we dealing with
+# Make this a table
 formatted_papers_dataset %>% 
+  drop_na(Year) %>% 
   count(Year)
+
 
 
 # How many papers per year of each type are we dealing with
@@ -268,7 +282,7 @@ n_of_papers_through_years_data <- formatted_papers_dataset %>%
   group_by(Year, type_of_publication) %>% 
   summarize(n_of_articles = sum(value), .groups = "drop")
 
-#write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/n_of_papers_through_years_data.csv") 
+# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/n_of_papers_through_years_data.csv") 
 
 
 # PLOT
@@ -281,25 +295,34 @@ n_of_papers_through_years_data %>%
   labs(x = "Year",
        y = "Number of articles published") +
   
-  scale_x_continuous(breaks = c(2012:2022), expand = c(0.01,0.01)) + 
-  scale_y_continuous(breaks = seq(0,600, by = 100)) +
+  scale_x_continuous(breaks = seq(min(n_of_papers_through_years_data[n_of_papers_through_years_data$n_of_articles>0 , "Year"]),
+                                  max(n_of_papers_through_years_data[n_of_papers_through_years_data$n_of_articles>0 , "Year"]),
+                                  by = 1), 
+                     limits = c(min(n_of_papers_through_years_data[n_of_papers_through_years_data$n_of_articles>0 , "Year"]),
+                                max(n_of_papers_through_years_data[n_of_papers_through_years_data$n_of_articles>0 , "Year"])), 
+                     expand = c(0.01,0.01)) + 
+  
+  scale_y_continuous(breaks = seq(min(n_of_papers_through_years_data$n_of_articles),
+                                  max(n_of_papers_through_years_data$n_of_articles), 
+                                  by = 100), 
+                     limits = c(min(n_of_papers_through_years_data$n_of_articles),
+                                max(n_of_papers_through_years_data$n_of_articles))) +
   
   guides(color = guide_legend("Type of publication")) +
   scale_color_discrete(breaks = c("original_article","review", "metaanalysis"),
                        labels = c("Research article", "Review", "Meta analysis")) +
   
   theme_bw() +
-  theme(panel.grid.minor = element_blank(),
+  theme(panel.grid.minor.x = element_blank(),
         panel.grid.major.x = element_blank(),
         
         axis.text = element_text(size = 12),
         axis.title = element_text(size = 16))
+
   
-# ggsave(filename = "microbiome_literature_mining/figures/n_of_papers_through_years_data.jpg", 
-#        plot = last_plot(), 
+# ggsave(filename = "microbiome_literature_mining/figures/n_of_papers_through_years_data.jpg",
+#        plot = last_plot(),
 #        units = "in", height = 8, width = 10)
-
-
 
 
 
@@ -311,7 +334,7 @@ n_of_papers_through_years_data %>%
 
 # DATA
 stacked_barplot_data <- formatted_papers_dataset %>%
-  drop_na(Year, braycurtis_performed:euclidian_performed) %>% 
+  drop_na(braycurtis_performed:euclidian_performed) %>% 
   group_by(Year) %>% 
   summarize(cum_bray = sum(braycurtis_performed),
             cum_jaccard = sum(jaccard_performed),
@@ -327,7 +350,7 @@ stacked_barplot_data <- formatted_papers_dataset %>%
   
   filter(num_studies > 0)
 
-#write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/stacked_barplot_distance_matrix_used_through_years.csv") 
+# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/stacked_barplot_distance_matrix_used_through_years.csv") 
 
 
 
@@ -343,7 +366,7 @@ stacked_barplot_data %>%
   
   labs(y = "",
        x = "Year of publication") + 
-  guides(fill = guide_legend("Distance matrix used")) +
+  guides(fill = guide_legend("Distance\nmatrix\nused")) +
   
   scale_color_manual(values = "black") +
   scale_fill_brewer(palette = "Dark2",
@@ -365,8 +388,8 @@ stacked_barplot_data %>%
         axis.text = element_text(size = 14))
 
 
-# ggsave(filename = "microbiome_literature_mining/figures/stacked_barplot_distance_matrix_used_through_years.jpg", 
-#        plot = last_plot(), 
+# ggsave(filename = "microbiome_literature_mining/figures/stacked_barplot_distance_matrix_used_through_years.jpg",
+#        plot = last_plot(),
 #        units = "in", height = 8, width = 10)
 
 
@@ -377,25 +400,26 @@ stacked_barplot_data %>%
 # CLR through the years
 
 # DATA
-clr_through_years_data <- formatted_papers_dataset %>% 
+aitchison_through_years_data <- formatted_papers_dataset %>% 
   drop_na(Year, aitchison_performed) %>% 
   select(PMCID, Title, aitchison_performed, Year) %>% 
   group_by(Year) %>% 
-  summarize(cum_clr_performed = sum(aitchison_performed), .groups = "drop")
+  summarize(cum_aitchison_performed = sum(aitchison_performed), .groups = "drop")
   
-#write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/aitchison_through_years_data.csv") 
+# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/aitchison_through_years_data.csv") 
 
 
 
 # PLOT
-clr_through_years_data %>% 
-  ggplot(aes(x = Year, y = cum_clr_performed)) + 
+aitchison_through_years_data %>% 
+  ggplot(aes(x = Year, y = cum_aitchison_performed)) + 
+  
+  geom_vline(xintercept = 2012, color = "grey60") + # HMP
+  geom_vline(xintercept = 2017, color = "grey60") + # Compositional
+  geom_vline(xintercept = 2019, color = "grey60") + # Neuroactive potential
+  
   geom_line(size = 1.2) + 
   geom_point(size = 2) +
-  
-  geom_vline(xintercept = 2012) + # HMP
-  geom_vline(xintercept = 2017) + # Compositional
-  geom_vline(xintercept = 2019) + # Neuroactive potential
   
   scale_x_continuous(breaks = seq(2012, 2022, by = 1)) +
   
@@ -406,10 +430,17 @@ clr_through_years_data %>%
   theme(panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank())
   
-# ggsave(filename = "microbiome_literature_mining/figures/line_plot_aitchison_through_years_data.jpg", 
-#        plot = last_plot(), 
-#        units = "in", height = 8, width = 10)
+ggsave(filename = "microbiome_literature_mining/figures/line_plot_aitchison_through_years_data.jpg",
+       plot = last_plot(),
+       units = "in", height = 8, width = 10)
 
+
+
+# ALLUVIAL PLOT
+
+# DATA
+#formatted_papers_dataset %>% 
+  
 
 
 
