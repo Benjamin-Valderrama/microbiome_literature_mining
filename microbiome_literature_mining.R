@@ -1,11 +1,13 @@
 
 #' TO DO LIST:
 #' 
+#' 0) Think on how to classify the papers in either of the cetegories: Review, meta-analysis or research article
+#' 
 #' 1) Make a table out of the count of how many papers per year are included in the analysis
 #' 
-#' 2) TO CORRECT: NOW THE PERFORMED COLUMN IS CALCULATED AS 1, IF EITHER ONE OF THE COLUMN IS 1, OR 0
+#' 2) TO CORRECT: NOW THE {distance_matrix}_PERFORMED COLUMN IS CALCULATED AS 1, IF EITHER ONE OF THE COLUMN IS 1, OR 0
 #' IF EITHER OF THEM IS 0. HOWEVER, IF ONE OF THE IS NA, REGARDLES OF THE RESULT OF THE OTHER, THE COLUMNS
-#' WITH PERFORMED WILL BE CONSIDERED AS NA, WHICH IS MESSING UP THE RESULTS.
+#' WITH PERFORMED WILL BE CONSIDERED AS NA, WHICH IS MESSING UP THE RESULTS. replace NAs as empty character vectors
 #' 
 #' 3) Do the inner join in another function that takes as arguments the 2 custom functions made before
 #' 
@@ -109,7 +111,7 @@ id_to_table <- function(id){
 #' 
 bool_str_detect <- function(my_string, my_pattern){
   
-  ifelse(str_detect(string = my_string, my_pattern), yes = 1, no = 0)
+  ifelse(str_detect(string = my_string, my_pattern), yes = TRUE, no = FALSE)
   
 }
 
@@ -170,9 +172,12 @@ clr_regex <- "clr|CLR|[Cc]entered.{1}[Ll]ogarithmic.{1}[Tt]ransformation|[Cc]ent
 # Format the dataset
 #microbiome_papers_text_and_metadata <- read.csv(file = "microbiome_literature_mining/data/microbiome_papers_text_and_metadata.csv")
 
-formatted_papers_dataset <- microbiome_papers_text_and_metadata %>% 
+#formatted_papers_dataset <- 
+
+microbiome_papers_text_and_metadata %>% 
   
-  mutate(major_section = case_when(str_detect(string = section, pattern = "[Aa]bstract") ~ "abstract",
+  mutate(across(.cols = where(is.character), .fns = replace_na, ""),
+         major_section = case_when(str_detect(string = section, pattern = "[Aa]bstract") ~ "abstract",
                                    str_detect(string = section, pattern = "[Mm]ethods") ~ "methods",
                                    str_detect(string = section, pattern = "[Rr]esults") ~ "results")) %>% 
   
@@ -188,7 +193,7 @@ formatted_papers_dataset <- microbiome_papers_text_and_metadata %>%
   # Here I'm removing the paragraph and sentence columns and relocating the other columns
   select(major_section, full_text, PMCID:Date.received) %>% 
   
-  unique() %>% 
+  distinct() %>% 
   
   pivot_wider(names_from = major_section, 
               values_from = full_text) %>% 
@@ -200,12 +205,15 @@ formatted_papers_dataset <- microbiome_papers_text_and_metadata %>%
          original_article = ifelse(!review & !metaanalysis, 1, 0)) %>% 
   
   
+  # Change NAs in the columns abstract, results or methods to empty character vectors
+  mutate(across(matches("abstract|methods|results"), ~replace_na(., "")))
+  
   
   # Get decomposed information about the content of the paper
   mutate(
     # Check in the methods which technology was used
-    methods_16s = bool_str_detect(methods, strings_16s_regex),
-    methods_wgs = bool_str_detect(methods, strings_wgs_regex),
+    methods_16s = str_detect(methods, strings_16s_regex),
+    methods_wgs = str_detect(methods, strings_wgs_regex),
     
     # Checking beta div or dimmensionality reduction in methods
     methods_beta_div = bool_str_detect(methods, beta_diversity_regex),
@@ -334,14 +342,14 @@ n_of_papers_through_years_data %>%
 
 # DATA
 stacked_barplot_data <- formatted_papers_dataset %>%
-  drop_na(braycurtis_performed:euclidian_performed) %>% 
+  
   group_by(Year) %>% 
-  summarize(cum_bray = sum(braycurtis_performed),
-            cum_jaccard = sum(jaccard_performed),
-            cum_w_unifrac = sum(weighted_unifrac_performed),
-            cum_uw_unifrac = sum(unweighted_unifrac_performed),
-            cum_aitchison = sum(aitchison_performed),
-            cum_euclidian = sum(euclidian_performed),
+  summarize(cum_bray = sum(braycurtis_performed, na.rm = T),
+            cum_jaccard = sum(jaccard_performed, na.rm = T),
+            cum_w_unifrac = sum(weighted_unifrac_performed, na.rm = T),
+            cum_uw_unifrac = sum(unweighted_unifrac_performed, na.rm = T),
+            cum_aitchison = sum(aitchison_performed, na.rm = T),
+            cum_euclidian = sum(euclidian_performed, na.rm = T),
             .groups = "drop") %>% 
 
   pivot_longer(cols = starts_with("cum"),
@@ -430,29 +438,43 @@ aitchison_through_years_data %>%
   theme(panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank())
   
-ggsave(filename = "microbiome_literature_mining/figures/line_plot_aitchison_through_years_data.jpg",
-       plot = last_plot(),
-       units = "in", height = 8, width = 10)
+# ggsave(filename = "microbiome_literature_mining/figures/line_plot_aitchison_through_years_data.jpg",
+#        plot = last_plot(),
+#        units = "in", height = 8, width = 10)
 
 
+
+# UPSET PLOT
+
+library(ComplexUpset)
+
+# DATA
+dataupset <- formatted_papers_dataset
+
+intersect <- colnames(dataupset)[grepl(pattern = "_performed|methods_wgs|methods_16s", x = colnames(dataupset))]
+
+dataupset <- dataupset %>% 
+  drop_na(review:aitchison_performed) %>% 
+  mutate(across(review:aitchison_performed, .fns = as.logical))
+
+# PLOT
+upset(dataupset, intersect, name = "", sort_intersections = FALSE, sort_sets = FALSE)
+  
 
 # ALLUVIAL PLOT
 
 # DATA
-#formatted_papers_dataset %>% 
-  
 
+# PLOT
 
 
 
 # Playground --------------------------------------------------------------
 
-toy_papers_ids <- paste0("PMC", c(3877837, 4073011, 3959530, 4428553, 4610029))
-toy_papers_ids <- paste0("PMC", c(4428553, 4610029))
-toy_microbiome_papers_text_and_metadata <- map_dfr(toy_papers_ids, possibly(.f = id_to_table, otherwise = NA))
-
-toy_microbiome_papers_text_and_metadata %>% tibble() %>% filter(section == "Title") %>% pull(PMCID)
-  pull(Title) %>% unique()
-
-  
-total_dataset <- read.csv(file = "microbiome_literature_mining/data/microbiome_papers_text_and_metadata.csv")
+movies = as.data.frame(ggplot2movies::movies)
+genres = colnames(movies)[18:24]
+genres
+movies[genres] = movies[genres] == 1
+movies[movies$mpaa == '', 'mpaa'] = NA
+movies = na.omit(movies)
+upset(movies, genres, name='genre', width_ratio=0.1)
