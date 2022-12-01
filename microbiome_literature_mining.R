@@ -1,6 +1,13 @@
-
 #' TO DO LIST:
 #' 
+#' 0) Re-think on how to classify the papers in either of the cetegories: Review, meta-analysis or research article
+#' 
+#' 0) Color palettes
+#' https://mikemol.github.io/technique/colorblind/2018/02/11/color-safe-palette.html 
+#' https://github.com/nanxstats/ggsci
+#' https://github.com/EmilHvitfeldt/paletteer
+#' 
+#' 1) Make a table out of the count of how many papers per year are included in the analysis
 #' 0) Think on how to classify the papers in either of the cetegories: Review, meta-analysis or research article
 #' 
 #' 1) Make a table out of the count of how many papers per year are included in the analysis
@@ -12,7 +19,6 @@
 #' 3) Do the inner join in another function that takes as arguments the 2 custom functions made before
 #' 
 #' 4) Error handling of the metadata retrieving function
-#' 
 #' 
 #' 6) Interesting things to see:
 #' 
@@ -35,11 +41,11 @@
 
 # Setting everything for the project --------------------------------------
 
-options(encoding="utf-8")
-
 library(tidypmc)
 library(tidyverse)
 library(rentrez)
+library(ComplexUpset)
+
 
 
 # Custom functions --------------------------------------------------------
@@ -92,26 +98,7 @@ id_to_table <- function(id){
     # Binding together the columns with the text of the paper along with its metadata 
     inner_join(., metadata_as_tibble(id), by = "PMCID")
   
-  print(paste("Text of : ", id, " succesfully retrieved"))
-  
-}
-
-
-
-#' bool_str_detect (my_string, my_pattern)
-#' 
-#' Description: Takes a string and a pattern. If the pattern is in the string, 
-#' the output is 1 (numeric), otherwise is 0 (numeric)
-#' 
-#' Input: 
-#' my_string: a character vector of length 1
-#' my_pattern: a character vector of length 1 or a regex expression
-#' 
-#' Output: a numeric vector of lenght 1, either 1 or 0
-#' 
-bool_str_detect <- function(my_string, my_pattern){
-  
-  ifelse(str_detect(string = my_string, my_pattern), yes = TRUE, no = FALSE)
+  #print(paste("Text of : ", id, " succesfully retrieved"))
   
 }
 
@@ -124,7 +111,7 @@ bool_str_detect <- function(my_string, my_pattern){
 
 # Getting the papers of interest's IDs
 papers_entrez <- entrez_search(db = "pmc", 
-                               term = "gut microbiota[ALL] AND 2014[PDAT] AND english[LANG]",
+                               term = "gut microbiota[ALL] AND 2015:2017[PDAT] AND english[LANG]",
                                retmax = 99999)
 
 #"gut microbiota[ALL] AND 2012:2021[PDAT] AND english[LANG]",
@@ -139,7 +126,7 @@ microbiome_papers_text_and_metadata <- map_dfr(papers_ids, possibly(.f = id_to_t
 
 
 # Exporting the data to csv files
-#write_csv(x = microbiome_papers_text_and_metadata, file = "microbiome_papers_text_and_metadata.csv")
+# write_csv(x = microbiome_papers_text_and_metadata, file = "data/microbiome_papers_text_and_metadata.csv") # Server
 
 
 
@@ -149,8 +136,8 @@ microbiome_papers_text_and_metadata <- map_dfr(papers_ids, possibly(.f = id_to_t
 
 
 # Strings used to further filter papers
-strings_16s_regex <- "16[Ss]"
-strings_wgs_regex <- "[Ww]hole.{1}[Gg]enome.{1}[Ss]equencing|WGS|wgs|[Mm]etagenomics|[Mm]etagenomic"
+regex_16s <- "16[Ss]"
+regex_wgs <- "[Ww]hole.{1}[Gg]enome.{1}[Ss]equencing|WGS|wgs|[Mm]etagenomics|[Mm]etagenomic"
 
 
 beta_diversity_regex <- "[Bb]eta.{1}[Dd]iversity|β.diversity"
@@ -170,7 +157,9 @@ clr_regex <- "clr|CLR|[Cc]entered.{1}[Ll]ogarithmic.{1}[Tt]ransformation|[Cc]ent
 
 
 # Format the dataset
-#microbiome_papers_text_and_metadata <- read.csv(file = "microbiome_literature_mining/data/microbiome_papers_text_and_metadata.csv")
+
+# microbiome_papers_text_and_metadata <- read.csv(file = "data/microbiome_papers_text_and_metadata.csv") # Server
+# microbiome_papers_text_and_metadata <- read.csv(file = "microbiome_literature_mining/data/microbiome_papers_text_and_metadata.csv") # PC
 
 #formatted_papers_dataset <- 
 
@@ -179,7 +168,8 @@ microbiome_papers_text_and_metadata %>%
   mutate(across(.cols = where(is.character), .fns = replace_na, ""),
          major_section = case_when(str_detect(string = section, pattern = "[Aa]bstract") ~ "abstract",
                                    str_detect(string = section, pattern = "[Mm]ethods") ~ "methods",
-                                   str_detect(string = section, pattern = "[Rr]esults") ~ "results")) %>% 
+                                   str_detect(string = section, pattern = "[Rr]esults") ~ "results",
+                                   TRUE ~ "other")) %>% 
   
   filter(str_detect(major_section, "abstract|methods|results")) %>% 
   
@@ -191,18 +181,23 @@ microbiome_papers_text_and_metadata %>%
   ungroup() %>% 
   
   # Here I'm removing the paragraph and sentence columns and relocating the other columns
-  select(major_section, full_text, PMCID:Date.received) %>% 
+  select(major_section, full_text, PMCID:`Date received`) %>% 
+        
+  filter(str_detect(PMCID, pmcs)) %>% 
   
+  # distinct removes the repeated rows generated with mutate str_c. 
+  # This process is suboptimal. Think on more computationally effective ways to do the same process.
   distinct() %>% 
   
   pivot_wider(names_from = major_section, 
-              values_from = full_text) %>% 
+              values_from = full_text, 
+              values_fill = "") %>%
 
   
   # Check if the articles are reviews or metaanalysis
-  mutate(review = ifelse(str_detect(Title, "[Rr]eview") | str_detect(abstract, "[Rr]eview"), 1, 0),
-         metaanalysis = ifelse(str_detect(Title, "[Mm]eta.{1}[Aa]nalysis") | str_detect(abstract, "[Mm]eta.{1}[Aa]nalysis"), 1, 0),
-         original_article = ifelse(!review & !metaanalysis, 1, 0)) %>% 
+  mutate(review = ifelse(str_detect(Title, "[Rr]eview") | str_detect(abstract, "[Rr]eview") | str_detect(methods, "[Rr]eview"), TRUE, FALSE),
+         metaanalysis = ifelse(str_detect(Title, "[Mm]eta.{1}[Aa]nalysis") | str_detect(abstract, "[Mm]eta.{1}[Aa]nalysis") | str_detect(methods, "[Rr]eview"), TRUE, FALSE),
+         original_article = ifelse(!review & !metaanalysis, TRUE, FALSE)) %>% 
   
   
   # Change NAs in the columns abstract, results or methods to empty character vectors
@@ -212,49 +207,51 @@ microbiome_papers_text_and_metadata %>%
   # Get decomposed information about the content of the paper
   mutate(
     # Check in the methods which technology was used
+    methods_16s = str_detect(methods, regex_16s),
+    methods_wgs = str_detect(methods, regex_wgs),
     methods_16s = str_detect(methods, strings_16s_regex),
     methods_wgs = str_detect(methods, strings_wgs_regex),
-    
+
     # Checking beta div or dimmensionality reduction in methods
-    methods_beta_div = bool_str_detect(methods, beta_diversity_regex),
-    methods_dim_reduction = bool_str_detect(methods, dim_reduction_regex),
+    methods_beta_div = str_detect(methods, beta_diversity_regex),
+    methods_dim_reduction = str_detect(methods, dim_reduction_regex),
     
     # Check distance matrix in methods
-    methods_bray_curtis = bool_str_detect(methods, bc_regex),
-    methods_jaccard = bool_str_detect(methods, jac_regex), 
-    methods_weighted_unifrac = bool_str_detect(methods, w_unifrac_regex),
-    methods_unweighted_unifrac = bool_str_detect(methods, uw_unifrac_regex),
-    methods_aitchison = bool_str_detect(methods, aitchison_regex),
-    methods_euclidian = bool_str_detect(methods, euclidian_regex),
-    methods_clr = bool_str_detect(methods, clr_regex),
+    methods_bray_curtis = str_detect(methods, bc_regex),
+    methods_jaccard = str_detect(methods, jac_regex), 
+    methods_weighted_unifrac = str_detect(methods, w_unifrac_regex),
+    methods_unweighted_unifrac = str_detect(methods, uw_unifrac_regex),
+    methods_aitchison = str_detect(methods, aitchison_regex),
+    methods_euclidian = str_detect(methods, euclidian_regex),
+    methods_clr = str_detect(methods, clr_regex),
     
     
     
     # Checking beta div or dimmensionality reduction in results
-    results_beta_div = bool_str_detect(results, beta_diversity_regex),
-    results_dim_reduction = bool_str_detect(results, dim_reduction_regex),
+    results_beta_div = str_detect(results, beta_diversity_regex),
+    results_dim_reduction = str_detect(results, dim_reduction_regex),
     
     # Check distance matrix in results
-    results_bray_curtis = bool_str_detect(results, bc_regex),
-    results_jaccard = bool_str_detect(results, jac_regex),
-    results_weighted_unifrac = bool_str_detect(results, w_unifrac_regex),
-    results_unweighted_unifrac = bool_str_detect(results, uw_unifrac_regex),
-    results_aitchison = bool_str_detect(results, aitchison_regex),
-    results_euclidian = bool_str_detect(results, euclidian_regex),
-    results_clr = bool_str_detect(results, clr_regex),
+    results_bray_curtis = str_detect(results, bc_regex),
+    results_jaccard = str_detect(results, jac_regex),
+    results_weighted_unifrac = str_detect(results, w_unifrac_regex),
+    results_unweighted_unifrac = str_detect(results, uw_unifrac_regex),
+    results_aitchison = str_detect(results, aitchison_regex),
+    results_euclidian = str_detect(results, euclidian_regex),
+    results_clr = str_detect(results, clr_regex),
     
     
     # Aggregating distances matrices mentioned in either methods or results
-    braycurtis_performed = ifelse(methods_bray_curtis | results_bray_curtis, 1, 0),
-    jaccard_performed = ifelse(methods_jaccard | results_jaccard, 1, 0),
-    weighted_unifrac_performed = ifelse(methods_weighted_unifrac | results_weighted_unifrac, 1, 0),
-    unweighted_unifrac_performed = ifelse(methods_unweighted_unifrac | results_unweighted_unifrac, 1, 0),
+    braycurtis_performed = ifelse(methods_bray_curtis | results_bray_curtis, TRUE, FALSE),
+    jaccard_performed = ifelse(methods_jaccard | results_jaccard, TRUE, FALSE),
+    weighted_unifrac_performed = ifelse(methods_weighted_unifrac | results_weighted_unifrac, TRUE, FALSE),
+    unweighted_unifrac_performed = ifelse(methods_unweighted_unifrac | results_unweighted_unifrac, TRUE, FALSE),
     #' Aitchison is considered as performed if:
     #' Either it was detected in the methods or results, or in case clr and euclidian are detected either in the methods or results.
-    aitchison_performed = ifelse(methods_aitchison | results_aitchison | (methods_clr & methods_euclidian) | (results_clr & results_euclidian), 1, 0),
+    aitchison_performed = ifelse(methods_aitchison | results_aitchison | (methods_clr & methods_euclidian) | (results_clr & results_euclidian), TRUE, FALSE),
     #' Euclidian is considered as performed if:
     #' it was mentioned either in methods or results, but in either case, neither aitchison nor clr was mentioned neither in methods nor results.
-    euclidian_performed = ifelse((methods_euclidian & !(methods_aitchison | methods_clr | results_aitchison | results_clr)) | (results_euclidian & !(results_aitchison | results_clr | methods_aitchison | methods_clr)), 1, 0))
+    euclidian_performed = ifelse((methods_euclidian & !(methods_aitchison | methods_clr | results_aitchison | results_clr)) | (results_euclidian & !(results_aitchison | results_clr | methods_aitchison | methods_clr)), TRUE, FALSE))
   
   
 # write_csv(x = formatted_papers_dataset, file = "data/formatted_papers_dataset.csv") # Server
@@ -290,7 +287,7 @@ n_of_papers_through_years_data <- formatted_papers_dataset %>%
   group_by(Year, type_of_publication) %>% 
   summarize(n_of_articles = sum(value), .groups = "drop")
 
-# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/n_of_papers_through_years_data.csv") 
+# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/n_of_papers_through_years_data.csv") # PC 
 
 
 # PLOT
@@ -330,7 +327,7 @@ n_of_papers_through_years_data %>%
   
 # ggsave(filename = "microbiome_literature_mining/figures/n_of_papers_through_years_data.jpg",
 #        plot = last_plot(),
-#        units = "in", height = 8, width = 10)
+#        units = "in", height = 8, width = 10) # PC
 
 
 
@@ -358,7 +355,7 @@ stacked_barplot_data <- formatted_papers_dataset %>%
   
   filter(num_studies > 0)
 
-# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/stacked_barplot_distance_matrix_used_through_years.csv") 
+# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/stacked_barplot_distance_matrix_used_through_years.csv") # PC
 
 
 
@@ -398,7 +395,7 @@ stacked_barplot_data %>%
 
 # ggsave(filename = "microbiome_literature_mining/figures/stacked_barplot_distance_matrix_used_through_years.jpg",
 #        plot = last_plot(),
-#        units = "in", height = 8, width = 10)
+#        units = "in", height = 8, width = 10) # PC
 
 
 
@@ -414,7 +411,7 @@ aitchison_through_years_data <- formatted_papers_dataset %>%
   group_by(Year) %>% 
   summarize(cum_aitchison_performed = sum(aitchison_performed), .groups = "drop")
   
-# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/aitchison_through_years_data.csv") 
+# write_csv(x = n_of_papers_through_years_data, file = "microbiome_literature_mining/data/aitchison_through_years_data.csv") # PC
 
 
 
@@ -440,6 +437,73 @@ aitchison_through_years_data %>%
   
 # ggsave(filename = "microbiome_literature_mining/figures/line_plot_aitchison_through_years_data.jpg",
 #        plot = last_plot(),
+#        units = "in", height = 8, width = 10) # PC
+
+
+
+
+# UPSETER PLOT
+
+intersect <- colnames(formatted_papers_dataset)[grepl(pattern = "_16s|_wgs|_performed", x = colnames(formatted_papers_dataset))]
+
+# DATA
+data_upset <- formatted_papers_dataset %>% 
+        mutate(across(where(is.double), as.logical)) %>% 
+        filter(original_article == TRUE & (methods_16s | methods_wgs)) %>% 
+        drop_na()
+        
+# write_csv(x = data_upset, file = "microbiome_literature_mining/data/data_upset.csv") # PC
+        
+
+# PLOT
+distances_names <- c("weighted_unifrac_performed",
+                     "braycurtis_performed",
+                     "unweighted_unifrac_performed",
+                     "jaccard_performed",
+                     "euclidian_performed",
+                     "aitchison_performed")
+
+order_16s <- str_split(paste("methods_16s", distances_names, sep = "-"), pattern = "-")
+order_wgs <- str_split(paste("methods_wgs", distances_names, sep = "-"), pattern = "-")
+order_16s_wgs <- str_split(paste("methods_16s","methods_wgs", distances_names, sep = "-"), pattern = "-")
+
+intersections <- c(order_16s, order_wgs, order_16s_wgs)
+
+#upset_query_coloring_bars <- 
+
+my_upset_query <- function(intersect, color, only_components){
+
+                upset_query(intersect = intersect,
+                            color = color,
+                            fill = color,
+                            only_components = only_components)
+}
+
+red_bars <- lapply(order_16s, my_upset_query, "red", c('intersections_matrix', 'Intersection size'))
+blue_bars <- lapply(order_wgs, my_upset_query, "blue", c('intersections_matrix', 'Intersection size'))
+purple_bars <- lapply(order_16s_wgs, my_upset_query, "purple", "Intersection size")
+
+all_bars <- c(red_bars, blue_bars, purple_bars)
+
+
+upset(data_upset, intersect,
+      sort_intersections = FALSE, 
+      intersections = intersections,
+      queries = c(blue_bars))
+
+
+list(upset_query(set = "methods_16s",
+            color = "red",
+            only_components = 'intersections_matrix'),
+
+upset_query(set = "methods_wgs",
+            color = "blue",
+            only_components = "intersections_matrix"),
+
+upset_query(intersect = c("methods_16s", "braycurtis_performed"),
+            color = "red",
+            fill = "red",
+            only_components = "Intersection size"))
 #        units = "in", height = 8, width = 10)
 
 
@@ -465,16 +529,81 @@ upset(dataupset, intersect, name = "", sort_intersections = FALSE, sort_sets = F
 
 # DATA
 
-# PLOT
-
 
 
 # Playground --------------------------------------------------------------
 
-movies = as.data.frame(ggplot2movies::movies)
-genres = colnames(movies)[18:24]
-genres
-movies[genres] = movies[genres] == 1
-movies[movies$mpaa == '', 'mpaa'] = NA
-movies = na.omit(movies)
-upset(movies, genres, name='genre', width_ratio=0.1)
+# PLOT
+toy_papers_ids <- paste0("PMC", c(3877837, 4073011, 3959530, 4428553, 4610029))
+toy_papers_ids <- paste0("PMC", c(4428553, 4610029))
+
+
+#' empty_df()
+#' 
+#' Description: makes an empty dataframe with 11 columns. The names of the columns are as follow:
+#' "PMCID", "Title", "Authors", "Year", "Journal", "Volume", "Pages", "Published online", "Date received", "DOI", "Publisher"
+#' 
+#' Output: A dataframe of 11 columns. All values are NA  
+empty_df <- function(){
+        
+        colnames_metadata <- c("PMCID", "Title", "Authors", "Year", "Journal", "Volume", "Pages", "Published online", "Date received", "DOI", "Publisher")
+        nadf <- data.frame(NA)
+        nadf[, x] <- NA
+        nadf <- subset(nadf, select = -c(NA.))
+        
+}
+
+
+map_dfr(.x = toy_papers_ids, possibly(.f = metadata_as_tibble, otherwise = empty_df()))
+
+#' metadata_as_tibble(id)
+
+#' Description: Takes the Pubmed Central id of a paper and produce a tibble with its metadata
+#' 
+#' Input: 
+#' id: character vector of length 1 in the shape of "PMC[0-9]{7}"
+#' 
+#' Output: 
+#' a tibble with the metadata associated to the paper annotated under the id provided
+
+metadata_as_tibble <- function(id){
+        
+        print(paste("Retrieveing metadata of : ", id))
+        
+        # Get the xml file of the paper
+        pmc_xml(id = id) %>% 
+                # Get the metadata of the paper
+                pmc_metadata() %>% 
+                # Transform it into a tidy format
+                as_tibble()
+        
+        print(paste("Metadata of : ", id, " succesfully retrieved"))
+}
+
+
+
+#' id_to_tibble(id)
+
+#' Description: Takes the Pubmed Central id of a paper and produce a tibble with its text and metadata
+#' 
+#' Input: 
+#' id: character vector of length 1 in the shape of "PMC[0-9]{7}"
+#' 
+#' Output: 
+#' a tibble with the text associated to the paper annotated under the id provided. It also includes columns
+#' with the metadata of the paper by wrapping the "metadata_as_tibble" function.
+
+id_to_table <- function(id){
+        
+        # Get the xml file of the paper
+        pmc_xml(id = id) %>% 
+                # Transform it into a tidy format
+                pmc_text() %>% 
+                # Add the ID of the paper as a column to link the text with its metadata
+                mutate(PMCID = id) %>% 
+                # Binding together the columns with the text of the paper along with its metadata 
+                inner_join(., metadata_as_tibble(id), by = "PMCID")
+        
+        #print(paste("Text of : ", id, " succesfully retrieved"))
+        
+}
