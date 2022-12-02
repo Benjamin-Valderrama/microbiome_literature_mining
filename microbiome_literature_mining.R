@@ -1,41 +1,40 @@
 #' TO DO LIST:
 #' 
+#' EXTRACTING THE DATA:
+#' 
 #' 0) Re-think on how to classify the papers in either of the cetegories: Review, meta-analysis or research article
+#'   -> One alternative could be to extract it from the xml
+#' 
+#' 1) CHECK THAT THE ORDER OF THE PMCID GIVEN TO ID_TO_TABLE FUNCTION DOESN'T AFFECT THE OUTPUT [DONE]
+#' 
+#' 2) Check which studies are from human samples and which are from other animals samples
+#' 
+#' 
+#' 
+#' FIGURES FOR THE PAPER
+#' 
+#' 0) Think on how to classify the papers in either of the cetegories: Review, meta-analysis or research article
+#' 
+#' 1) Make a table out of the count of how many papers per year are included in the analysis
+#' 
+#' 2) Tendency over the years to use clr transformation
+#' Include : 
+#'        https://www.frontiersin.org/articles/10.3389/fmicb.2017.02224/full
+#'        https://www.nature.com/articles/s41564-018-0337-x 
+#'        https://pubmed.ncbi.nlm.nih.gov/31194939/ 
+#'
+#' 3) Alluvial plots
+#' 
+#' 4) https://cran.r-project.org/web/packages/ggupset/readme/README.html
+#' 
+#' 
+#' 
+#' GENERAL LOOKING
 #' 
 #' 0) Color palettes
 #' https://mikemol.github.io/technique/colorblind/2018/02/11/color-safe-palette.html 
 #' https://github.com/nanxstats/ggsci
 #' https://github.com/EmilHvitfeldt/paletteer
-#' 
-#' 1) Make a table out of the count of how many papers per year are included in the analysis
-#' 0) Think on how to classify the papers in either of the cetegories: Review, meta-analysis or research article
-#' 
-#' 1) Make a table out of the count of how many papers per year are included in the analysis
-#' 
-#' 2) TO CORRECT: NOW THE {distance_matrix}_PERFORMED COLUMN IS CALCULATED AS 1, IF EITHER ONE OF THE COLUMN IS 1, OR 0
-#' IF EITHER OF THEM IS 0. HOWEVER, IF ONE OF THE IS NA, REGARDLES OF THE RESULT OF THE OTHER, THE COLUMNS
-#' WITH PERFORMED WILL BE CONSIDERED AS NA, WHICH IS MESSING UP THE RESULTS. replace NAs as empty character vectors
-#' 
-#' 3) Do the inner join in another function that takes as arguments the 2 custom functions made before
-#' 
-#' 4) Error handling of the metadata retrieving function
-#' 
-#' 6) Interesting things to see:
-#' 
-#' 6.1 From the total of papers, how many use the different distance matrices (there are some euclidean without clr)
-#' 
-#' 6.2 Tendency over the years to use clr transformation
-#'   6.2.1 Include : 
-#'        https://www.frontiersin.org/articles/10.3389/fmicb.2017.02224/full
-#'        https://www.nature.com/articles/s41564-018-0337-x 
-#'        https://pubmed.ncbi.nlm.nih.gov/31194939/ 
-#'
-#' 6.3 Alluvial plots
-#' 
-#' 6.4 https://cran.r-project.org/web/packages/ggupset/readme/README.html
-#' 
-#' 8) Check which studies are from human samples and which are from other animals samples
-
 
 
 
@@ -61,8 +60,6 @@ library(ComplexUpset)
 #' a tibble with the metadata associated to the paper annotated under the id provided
 
 metadata_as_tibble <- function(id){
-
-  #print(paste("Retrieveing metadata of : ", id))
   
   # Get the xml file of the paper
   pmc_xml(id = id) %>% 
@@ -70,8 +67,7 @@ metadata_as_tibble <- function(id){
     pmc_metadata() %>% 
     # Transform it into a tidy format
     as_tibble()
-  
-# print(paste("Metadata of : ", id, " succesfully retrieved"))
+
 }
 
 
@@ -98,8 +94,6 @@ id_to_table <- function(id){
     # Binding together the columns with the text of the paper along with its metadata 
     inner_join(., metadata_as_tibble(id), by = "PMCID")
   
-  #print(paste("Text of : ", id, " succesfully retrieved"))
-  
 }
 
 
@@ -111,7 +105,7 @@ id_to_table <- function(id){
 
 # Getting the papers of interest's IDs
 papers_entrez <- entrez_search(db = "pmc", 
-                               term = "gut microbiota[ALL] AND 2015:2017[PDAT] AND english[LANG]",
+                               term = "gut microbiota[ALL] AND 2014[PDAT] AND english[LANG]",
                                retmax = 99999)
 
 #"gut microbiota[ALL] AND 2012:2021[PDAT] AND english[LANG]",
@@ -300,6 +294,8 @@ n_of_papers_through_years_data %>%
   labs(x = "Year",
        y = "Number of articles published") +
   
+  
+  # CHANGE MIN(...$YEARS) FOR A NAMED VARIABLE. Something like: "years_with_microbiome_publications" or something alike.
   scale_x_continuous(breaks = seq(min(n_of_papers_through_years_data[n_of_papers_through_years_data$n_of_articles>0 , "Year"]),
                                   max(n_of_papers_through_years_data[n_of_papers_through_years_data$n_of_articles>0 , "Year"]),
                                   by = 1), 
@@ -533,77 +529,6 @@ upset(dataupset, intersect, name = "", sort_intersections = FALSE, sort_sets = F
 
 # Playground --------------------------------------------------------------
 
-# PLOT
-toy_papers_ids <- paste0("PMC", c(3877837, 4073011, 3959530, 4428553, 4610029))
-toy_papers_ids <- paste0("PMC", c(4428553, 4610029))
+toy_papers_ids <- c("PMC3959530", "PMC3877837", "PMC4073011", "PMC3904282", "PMC3877837", "PMC4073018")
 
-
-#' empty_df()
-#' 
-#' Description: makes an empty dataframe with 11 columns. The names of the columns are as follow:
-#' "PMCID", "Title", "Authors", "Year", "Journal", "Volume", "Pages", "Published online", "Date received", "DOI", "Publisher"
-#' 
-#' Output: A dataframe of 11 columns. All values are NA  
-empty_df <- function(){
-        
-        colnames_metadata <- c("PMCID", "Title", "Authors", "Year", "Journal", "Volume", "Pages", "Published online", "Date received", "DOI", "Publisher")
-        nadf <- data.frame(NA)
-        nadf[, x] <- NA
-        nadf <- subset(nadf, select = -c(NA.))
-        
-}
-
-
-map_dfr(.x = toy_papers_ids, possibly(.f = metadata_as_tibble, otherwise = empty_df()))
-
-#' metadata_as_tibble(id)
-
-#' Description: Takes the Pubmed Central id of a paper and produce a tibble with its metadata
-#' 
-#' Input: 
-#' id: character vector of length 1 in the shape of "PMC[0-9]{7}"
-#' 
-#' Output: 
-#' a tibble with the metadata associated to the paper annotated under the id provided
-
-metadata_as_tibble <- function(id){
-        
-        print(paste("Retrieveing metadata of : ", id))
-        
-        # Get the xml file of the paper
-        pmc_xml(id = id) %>% 
-                # Get the metadata of the paper
-                pmc_metadata() %>% 
-                # Transform it into a tidy format
-                as_tibble()
-        
-        print(paste("Metadata of : ", id, " succesfully retrieved"))
-}
-
-
-
-#' id_to_tibble(id)
-
-#' Description: Takes the Pubmed Central id of a paper and produce a tibble with its text and metadata
-#' 
-#' Input: 
-#' id: character vector of length 1 in the shape of "PMC[0-9]{7}"
-#' 
-#' Output: 
-#' a tibble with the text associated to the paper annotated under the id provided. It also includes columns
-#' with the metadata of the paper by wrapping the "metadata_as_tibble" function.
-
-id_to_table <- function(id){
-        
-        # Get the xml file of the paper
-        pmc_xml(id = id) %>% 
-                # Transform it into a tidy format
-                pmc_text() %>% 
-                # Add the ID of the paper as a column to link the text with its metadata
-                mutate(PMCID = id) %>% 
-                # Binding together the columns with the text of the paper along with its metadata 
-                inner_join(., metadata_as_tibble(id), by = "PMCID")
-        
-        #print(paste("Text of : ", id, " succesfully retrieved"))
-        
-}
+pmc_xml(toy_papers_ids[1])
