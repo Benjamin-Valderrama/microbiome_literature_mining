@@ -13,8 +13,6 @@
 #' 
 #' FIGURES FOR THE PAPER
 #' 
-#' 0) Think on how to classify the papers in either of the cetegories: Review, meta-analysis or research article
-#' 
 #' 1) Make a table out of the count of how many papers per year are included in the analysis
 #' 
 #' 2) Tendency over the years to use clr transformation
@@ -155,9 +153,7 @@ clr_regex <- "clr|CLR|[Cc]entered.{1}[Ll]ogarithmic.{1}[Tt]ransformation|[Cc]ent
 # microbiome_papers_text_and_metadata <- read.csv(file = "data/microbiome_papers_text_and_metadata.csv") # Server
 # microbiome_papers_text_and_metadata <- read.csv(file = "microbiome_literature_mining/data/microbiome_papers_text_and_metadata.csv") # PC
 
-#formatted_papers_dataset <- 
-
-microbiome_papers_text_and_metadata %>% 
+formatted_papers_dataset <- microbiome_papers_text_and_metadata %>% 
   
   mutate(across(.cols = where(is.character), .fns = replace_na, ""),
          major_section = case_when(str_detect(string = section, pattern = "[Aa]bstract") ~ "abstract",
@@ -169,15 +165,13 @@ microbiome_papers_text_and_metadata %>%
   
   group_by(PMCID, major_section) %>% 
   
-  # Mutate instead of group_by because I wanted to keep the rest of the columns
+  # Mutate instead of summarize because I wanted to keep the rest of the columns
   mutate(full_text = str_c(text, collapse = " ")) %>% 
   
   ungroup() %>% 
   
   # Here I'm removing the paragraph and sentence columns and relocating the other columns
-  select(major_section, full_text, PMCID:`Date received`) %>% 
-        
-  filter(str_detect(PMCID, pmcs)) %>% 
+  select(major_section, full_text, PMCID:Date.received) %>% 
   
   # distinct removes the repeated rows generated with mutate str_c. 
   # This process is suboptimal. Think on more computationally effective ways to do the same process.
@@ -194,17 +188,11 @@ microbiome_papers_text_and_metadata %>%
          original_article = ifelse(!review & !metaanalysis, TRUE, FALSE)) %>% 
   
   
-  # Change NAs in the columns abstract, results or methods to empty character vectors
-  mutate(across(matches("abstract|methods|results"), ~replace_na(., "")))
-  
-  
   # Get decomposed information about the content of the paper
   mutate(
     # Check in the methods which technology was used
     methods_16s = str_detect(methods, regex_16s),
     methods_wgs = str_detect(methods, regex_wgs),
-    methods_16s = str_detect(methods, strings_16s_regex),
-    methods_wgs = str_detect(methods, strings_wgs_regex),
 
     # Checking beta div or dimmensionality reduction in methods
     methods_beta_div = str_detect(methods, beta_diversity_regex),
@@ -439,91 +427,8 @@ aitchison_through_years_data %>%
 
 
 # UPSETER PLOT
+library(ggupset)
 
-intersect <- colnames(formatted_papers_dataset)[grepl(pattern = "_16s|_wgs|_performed", x = colnames(formatted_papers_dataset))]
-
-# DATA
-data_upset <- formatted_papers_dataset %>% 
-        mutate(across(where(is.double), as.logical)) %>% 
-        filter(original_article == TRUE & (methods_16s | methods_wgs)) %>% 
-        drop_na()
-        
-# write_csv(x = data_upset, file = "microbiome_literature_mining/data/data_upset.csv") # PC
-        
-
-# PLOT
-distances_names <- c("weighted_unifrac_performed",
-                     "braycurtis_performed",
-                     "unweighted_unifrac_performed",
-                     "jaccard_performed",
-                     "euclidian_performed",
-                     "aitchison_performed")
-
-order_16s <- str_split(paste("methods_16s", distances_names, sep = "-"), pattern = "-")
-order_wgs <- str_split(paste("methods_wgs", distances_names, sep = "-"), pattern = "-")
-order_16s_wgs <- str_split(paste("methods_16s","methods_wgs", distances_names, sep = "-"), pattern = "-")
-
-intersections <- c(order_16s, order_wgs, order_16s_wgs)
-
-#upset_query_coloring_bars <- 
-
-my_upset_query <- function(intersect, color, only_components){
-
-                upset_query(intersect = intersect,
-                            color = color,
-                            fill = color,
-                            only_components = only_components)
-}
-
-red_bars <- lapply(order_16s, my_upset_query, "red", c('intersections_matrix', 'Intersection size'))
-blue_bars <- lapply(order_wgs, my_upset_query, "blue", c('intersections_matrix', 'Intersection size'))
-purple_bars <- lapply(order_16s_wgs, my_upset_query, "purple", "Intersection size")
-
-all_bars <- c(red_bars, blue_bars, purple_bars)
-
-
-upset(data_upset, intersect,
-      sort_intersections = FALSE, 
-      intersections = intersections,
-      queries = c(blue_bars))
-
-
-list(upset_query(set = "methods_16s",
-            color = "red",
-            only_components = 'intersections_matrix'),
-
-upset_query(set = "methods_wgs",
-            color = "blue",
-            only_components = "intersections_matrix"),
-
-upset_query(intersect = c("methods_16s", "braycurtis_performed"),
-            color = "red",
-            fill = "red",
-            only_components = "Intersection size"))
-#        units = "in", height = 8, width = 10)
-
-
-
-# UPSET PLOT
-
-library(ComplexUpset)
-
-# DATA
-dataupset <- formatted_papers_dataset
-
-intersect <- colnames(dataupset)[grepl(pattern = "_performed|methods_wgs|methods_16s", x = colnames(dataupset))]
-
-dataupset <- dataupset %>% 
-  drop_na(review:aitchison_performed) %>% 
-  mutate(across(review:aitchison_performed, .fns = as.logical))
-
-# PLOT
-upset(dataupset, intersect, name = "", sort_intersections = FALSE, sort_sets = FALSE)
-  
-
-# ALLUVIAL PLOT
-
-# DATA
 
 
 
